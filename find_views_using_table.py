@@ -1,5 +1,6 @@
 import os
 import re
+import argparse
 
 def find_views_using_table(view_path, target_table):
     target_table = target_table.lower()
@@ -11,22 +12,23 @@ def find_views_using_table(view_path, target_table):
             with open(full_path, 'r') as f:
                 content = f.read().lower()
 
-                # Check if the table appears in a FROM clause or JOIN clause
+                # Match "from <table>" or "join <table>"
                 if re.search(rf'\b(from|join)\s+{target_table}\b', content):
                     matches.append(filename)
 
     return matches
 
 if __name__ == "__main__":
-    # Hardcoded path to views folder and target table
-    views_folder = "/home/youruser/sql-repo/views"
-    table_to_search = "orders"  # 🔁 Change this to your input
+    parser = argparse.ArgumentParser(description="Find views that depend on a given table.")
+    parser.add_argument("--table", required=True, help="Target table name (e.g., orders)")
+    parser.add_argument("--path", required=True, help="Path to views folder")
 
-    found_views = find_views_using_table(views_folder, table_to_search)
+    args = parser.parse_args()
+    found_views = find_views_using_table(args.path, args.table)
 
     if found_views:
-        print(f"✅ Views that use table '{table_to_search}':")
+        print(f"✅ Views using table '{args.table}':")
         for view in found_views:
             print(f" - {view}")
     else:
-        print(f"❌ No views found using table '{table_to_search}'")
+        print(f"❌ No views found using table '{args.table}'")
