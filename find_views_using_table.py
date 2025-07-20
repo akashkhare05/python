@@ -3,17 +3,16 @@ import re
 import argparse
 
 def find_views_using_table(view_path, target_table):
-    target_table = target_table.lower()
     matches = []
+    pattern = re.compile(rf'\b(from|join)\s+{re.escape(target_table)}\b', re.IGNORECASE)
 
     for filename in os.listdir(view_path):
         if filename.endswith('.sql'):
             full_path = os.path.join(view_path, filename)
             with open(full_path, 'r') as f:
-                content = f.read().lower()
+                content = f.read()
 
-                # Match "from <table>" or "join <table>"
-                if re.search(rf'\b(from|join)\s+{target_table}\b', content):
+                if pattern.search(content):
                     matches.append(filename)
 
     return matches
