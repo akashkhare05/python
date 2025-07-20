@@ -3,7 +3,7 @@ import re
 from collections import defaultdict
 
 def find_sql_files(base_path):
-    """ Recursively find all .sql files under base_path """
+    """Recursively find all .sql files under base_path."""
     sql_files = []
     for root, _, files in os.walk(base_path):
         for file in files:
@@ -11,36 +11,37 @@ def find_sql_files(base_path):
                 sql_files.append(os.path.join(root, file))
     return sql_files
 
-def parse_view_dependencies(files):
-    """ Parse views and build a map of view definitions and their dependencies """
-    view_definitions = {}         # view_name -> file_path
-    view_dependencies = defaultdict(set)  # view_name -> set of object names (tables or views) it uses
+def parse_definitions_and_dependencies(files):
+    """Parse all .sql files and return view definitions and their dependencies."""
+    definitions = {}  # object_name (usually view) -> file_path
+    dependencies = defaultdict(set)  # object_name -> set of table/view it uses
 
     for filepath in files:
         with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
             content = f.read().lower()
-            # find view name
-            view_match = re.search(r'create\s+view\s+([\w\."]+)', content)
-            if view_match:
-                view_name = view_match.group(1).strip('"')
-                view_definitions[view_name] = filepath
 
-                # find dependencies in FROM / JOIN clauses (simplified)
+            # Match CREATE VIEW or INSERT INTO object_name
+            def_match = re.search(r'(create\s+view|insert\s+into)\s+([\w\."]+)', content)
+            if def_match:
+                object_name = def_match.group(2).strip('"')
+                definitions[object_name] = filepath
+
+                # Find all FROM and JOIN targets
                 matches = re.findall(r'(from|join)\s+([\w\."]+)', content)
-                for _, obj in matches:
-                    dep = obj.strip('"')
-                    if dep != view_name:
-                        view_dependencies[view_name].add(dep)
-    return view_definitions, view_dependencies
+                for _, target in matches:
+                    target = target.strip('"')
+                    if target != object_name:
+                        dependencies[object_name].add(target)
+    return definitions, dependencies
 
-def build_reverse_dependency_tree(target, view_dependencies):
-    """ Build reverse tree: for each view, who uses it """
+def build_reverse_dependency_tree(target, dependencies):
+    """Print reverse dependency tree from target."""
     reverse_tree = defaultdict(set)
-    for view, deps in view_dependencies.items():
-        for dep in deps:
-            reverse_tree[dep].add(view)
 
-    # recursive tree builder
+    for obj, deps in dependencies.items():
+        for dep in deps:
+            reverse_tree[dep].add(obj)
+
     def build_tree(node, level=0, visited=set()):
         indent = "    " * level + ("↳ " if level > 0 else "")
         print(f"{indent}{node}")
@@ -52,20 +53,29 @@ def build_reverse_dependency_tree(target, view_dependencies):
 
     build_tree(target.lower())
 
+def normalize_name(name):
+    """Lowercase and remove double quotes."""
+    return name.lower().replace('"', '')
+
 def main(table_name, base_path):
-    print(f"\n🔍 Searching for usage of: {table_name}\n")
+    table_name = normalize_name(table_name)
+    print(f"\n🔍 Finding views that depend on: {table_name}\n")
+
     sql_files = find_sql_files(base_path)
-    view_defs, view_deps = parse_view_dependencies(sql_files)
+    defs, deps = parse_definitions_and_dependencies(sql_files)
 
-    table_name = table_name.lower()
-    used_directly = [view for view, deps in view_deps.items() if table_name in deps]
+    all_objects = set(defs.keys()).union(*deps.values())
 
-    if not used_directly:
-        print("❌ No views found using the table or view.")
+    # Check if the exact name is present
+    matches = [obj for obj in all_objects if obj.endswith(table_name)]
+    if not matches:
+        print(f"❌ No object found using or matching '{table_name}'")
         return
 
+    # Start tree from all matching base names (with or without schema)
     print("✅ Dependency Tree:\n")
-    build_reverse_dependency_tree(table_name, view_deps)
+    for match in matches:
+        build_reverse_dependency_tree(match, deps)
 
 # Example usage:
 if __name__ == "__main__":
